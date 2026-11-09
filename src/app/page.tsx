@@ -1,0 +1,161 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity, ArrowDownRight, ArrowUpRight, BookOpen, CalendarDays, Check, CheckCheck,
+  CheckCircle2, CircleHelp, ClipboardCheck, Clock3, FileText, Flag,
+  Laptop, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, StickyNote, X,
+} from "lucide-react";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { localDateString, prettyDate, shortDate } from "@/lib/dates";
+
+type Section = "overview" | "daily" | "checks" | "notes";
+type DailyLog = { id: string; log_date: string; title: string; details: string; created_at: string };
+type FollowupTask = { id: string; title: string; details: string; project: string; deadline: string | null; priority: "low" | "normal" | "high"; status: "todo" | "in_progress" | "done"; created_at: string };
+type WorkNote = { id: string; title: string; body: string; tag: string; updated_at: string };
+
+const nav = [
+  { id: "overview" as const, label: "Ringkasan", icon: Activity },
+  { id: "daily" as const, label: "Daily Task", icon: FileText },
+  { id: "checks" as const, label: "Daily Check", icon: ClipboardCheck },
+  { id: "notes" as const, label: "Notes", icon: StickyNote },
+];
+
+function Login({ onLogin }: { onLogin: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setError(""); setBusy(true);
+    if (!supabase) { setError("Hubungkan project Supabase dulu lewat konfigurasi environment."); setBusy(false); return; }
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    if (authError) setError("Email atau password belum cocok. Pastikan akun sudah dibuat di Supabase.");
+    else onLogin();
+    setBusy(false);
+  }
+
+  return <main className="login-page">
+    <div className="login-art"><div className="art-glow"/><div className="art-copy"><div className="brand-mark large"><Laptop size={23}/></div><p className="eyebrow light">WORKSPACE PERSONAL</p><h1>Semua kerjaan<br/>rapi, satu tempat.</h1><p className="art-sub">Log aktivitas, cek follow-up dari lead, dan simpan catatan kerja dengan tertata.</p><div className="art-check"><span><Check size={14}/></span>Dirancang buat workflow IT Support</div></div><div className="art-bottom"><span>DAILY CHECK</span><span>IT SUPPORT WORKSPACE</span></div></div>
+    <div className="login-side"><div className="login-form-wrap"><div className="brand-line"><div className="brand-mark"><Laptop size={20}/></div><span>Daily Check</span></div><div className="login-heading"><p className="eyebrow">SELAMAT DATANG</p><h2>Masuk ke workspace</h2><p>Gunakan akun yang sudah dibuat di Supabase.</p></div>
+      {!isSupabaseConfigured && <div className="setup-alert"><CircleHelp size={17}/><span>Supabase belum terhubung. Isi <code>.env.local</code> dengan URL dan publishable key project.</span></div>}
+      <form onSubmit={submit} className="login-form"><label>Email kerja<input type="email" autoComplete="username" placeholder="nama@email.com" value={email} onChange={e=>setEmail(e.target.value)} required/></label><label>Password<input type="password" autoComplete="current-password" placeholder="Masukkan password" value={password} onChange={e=>setPassword(e.target.value)} required/></label>{error && <p className="form-error">{error}</p>}<button className="primary-btn full" disabled={busy}>{busy ? "Memeriksa..." : "Masuk ke workspace"}<ArrowUpRight size={17}/></button></form>
+      <div className="login-security"><LockKeyhole size={15}/><span>Akses khusus pengguna terdaftar. Jangan gunakan password kantor di Notes.</span></div><div className="login-foot">Butuh akun? Buat satu dari <strong>Supabase Dashboard → Authentication → Users</strong>.</div>
+    </div></div>
+  </main>;
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}><section className="modal" role="dialog" aria-modal="true"><div className="modal-head"><div><span className="eyebrow">DAILY CHECK</span><h3>{title}</h3></div><button className="icon-btn" aria-label="Tutup" onClick={onClose}><X size={18}/></button></div>{children}</section></div>;
+}
+
+export default function Home() {
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured);
+  const [section, setSection] = useState<Section>("overview");
+  const [logs, setLogs] = useState<DailyLog[]>([]);
+  const [tasks, setTasks] = useState<FollowupTask[]>([]);
+  const [notes, setNotes] = useState<WorkNote[]>([]);
+  const [modal, setModal] = useState<"log"|"task"|"note"|null>(null);
+  const [editingNote, setEditingNote] = useState<WorkNote|null>(null);
+  const [mobileNav, setMobileNav] = useState(false);
+  const [search, setSearch] = useState("");
+  const [toast, setToast] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const today = localDateString();
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => { setUser(data.session?.user ? { id: data.session.user.id, email: data.session.user.email } : null); setAuthReady(true); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ? { id: session.user.id, email: session.user.email } : null));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const loadData = useCallback(async () => {
+    if (!supabase || !user) return;
+    setLoadError("");
+    const [l, t, n] = await Promise.all([
+      supabase.from("daily_logs").select("id, log_date, title, details, created_at").order("created_at", { ascending: false }).limit(80),
+      supabase.from("followup_tasks").select("id, title, details, project, deadline, priority, status, created_at").order("deadline", { ascending: true, nullsFirst: false }),
+      supabase.from("work_notes").select("id, title, body, tag, updated_at").order("updated_at", { ascending: false }),
+    ]);
+    const err = l.error || t.error || n.error;
+    if (err) { setLoadError("Data belum bisa dimuat. Pastikan migration SQL sudah dijalankan di Supabase."); return; }
+    setLogs((l.data || []) as DailyLog[]); setTasks((t.data || []) as FollowupTask[]); setNotes((n.data || []) as WorkNote[]);
+  }, [user]);
+
+  useEffect(() => { void Promise.resolve().then(loadData); }, [loadData]);
+  useEffect(() => { if (!toast) return; const id = window.setTimeout(()=>setToast(""), 2600); return ()=>window.clearTimeout(id); }, [toast]);
+
+  const todayLogs = logs.filter(x=>x.log_date===today);
+  const openTasks = tasks.filter(x=>x.status!=="done");
+  const doneCount = tasks.filter(x=>x.status==="done").length;
+  const overdue = openTasks.filter(x=>x.deadline && x.deadline < today).length;
+  const filteredNotes = useMemo(()=>notes.filter(n=>`${n.title} ${n.body} ${n.tag}`.toLowerCase().includes(search.toLowerCase())),[notes,search]);
+
+  async function logout() { await supabase?.auth.signOut(); setUser(null); }
+  function showModal(kind: "log"|"task"|"note") { setEditingNote(null); setModal(kind); }
+  function notify(message: string) { setToast(message); }
+  async function removeRow(table: "daily_logs"|"followup_tasks"|"work_notes", id: string) {
+    if (!supabase) return;
+    const { error } = await supabase.from(table).delete().eq("id",id);
+    if (error) notify("Belum berhasil dihapus. Coba lagi."); else { notify("Berhasil dihapus."); loadData(); }
+  }
+  async function updateTask(task: FollowupTask) {
+    if (!supabase) return;
+    const status = task.status === "todo" ? "in_progress" : task.status === "in_progress" ? "done" : "todo";
+    const { error } = await supabase.from("followup_tasks").update({status,updated_at:new Date().toISOString()}).eq("id",task.id);
+    if (error) notify("Status belum berhasil diperbarui."); else { notify(status==="done"?"Task selesai. Nice!":"Status task diperbarui."); loadData(); }
+  }
+  async function saveLog(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault(); if(!supabase||!user)return; const fd=new FormData(e.currentTarget);
+    const {error}=await supabase.from("daily_logs").insert({user_id:user.id,log_date:fd.get("log_date"),title:fd.get("title"),details:fd.get("details")});
+    if(error){notify("Catatan belum tersimpan.");return;} setModal(null);notify("Aktivitas ditambahkan.");loadData();
+  }
+  async function saveTask(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();if(!supabase||!user)return;const fd=new FormData(e.currentTarget);
+    const {error}=await supabase.from("followup_tasks").insert({user_id:user.id,title:fd.get("title"),details:fd.get("details"),project:fd.get("project"),deadline:fd.get("deadline")||null,priority:fd.get("priority"),status:"todo"});
+    if(error){notify("Task belum tersimpan.");return;}setModal(null);notify("Task ditambahkan.");loadData();
+  }
+  async function saveNote(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();if(!supabase||!user)return;const fd=new FormData(e.currentTarget);const payload={title:fd.get("title") as string,body:fd.get("body") as string,tag:fd.get("tag") as string,updated_at:new Date().toISOString()};
+    const result=editingNote?await supabase.from("work_notes").update(payload).eq("id",editingNote.id):await supabase.from("work_notes").insert({...payload,user_id:user.id});
+    if(result.error){notify("Catatan belum tersimpan.");return;}setModal(null);setEditingNote(null);notify(editingNote?"Catatan diperbarui.":"Catatan disimpan.");loadData();
+  }
+
+  if (!authReady) return <div className="loading-screen"><div className="brand-mark"><Laptop size={20}/></div><span>Menyiapkan workspace...</span></div>;
+  if (!user) return <Login onLogin={()=>{if(supabase)supabase.auth.getUser().then(({data})=>setUser(data.user?{id:data.user.id,email:data.user.email}:null));}}/>;
+
+  const current = nav.find(x=>x.id===section)!;
+  return <div className="app-shell">
+    <aside className={`sidebar ${mobileNav?"open":""}`}><div className="sidebar-brand"><div className="brand-mark"><Laptop size={20}/></div><div><strong>Daily Check</strong><small>IT Support Workspace</small></div><button className="icon-btn mobile-close" onClick={()=>setMobileNav(false)} aria-label="Tutup menu"><X size={18}/></button></div><div className="nav-label">WORKSPACE</div><nav>{nav.map(item=><button key={item.id} onClick={()=>{setSection(item.id);setMobileNav(false);}} className={`nav-item ${section===item.id?"active":""}`}><item.icon size={18}/><span>{item.label}</span>{item.id==="checks"&&openTasks.length>0&&<b>{openTasks.length}</b>}</button>)}</nav><div className="sidebar-spacer"/><div className="sidebar-note"><div className="secure-icon"><ShieldCheck size={18}/></div><strong>Ruang kerja pribadi</strong><p>Data dibatasi ke akun yang sedang login.</p></div><div className="profile"><div className="avatar">{(user.email?.[0]||"I").toUpperCase()}</div><div className="profile-info"><strong>{user.email?.split("@")[0]||"IT Support"}</strong><span>{user.email}</span></div><button className="icon-btn" title="Keluar" onClick={logout}><LogOut size={17}/></button></div></aside>
+    {mobileNav&&<button className="mobile-scrim" onClick={()=>setMobileNav(false)} aria-label="Tutup navigasi"/>}
+    <main className="main-area"><header className="topbar"><div className="topbar-title"><button className="icon-btn mobile-menu" onClick={()=>setMobileNav(true)} aria-label="Buka navigasi"><Menu size={20}/></button><div><span className="breadcrumb">Workspace <span>/</span> {current.label}</span><h1>{section==="overview"?"Ringkasan hari ini":current.label}</h1></div></div><div className="topbar-right"><div className="date-chip"><CalendarDays size={16}/><span>{prettyDate()}</span></div><div className="top-avatar">{(user.email?.[0]||"I").toUpperCase()}</div></div></header>
+      <div className="content-area">
+        {loadError&&<div className="error-banner"><CircleHelp size={17}/>{loadError}</div>}
+        {section==="overview"&&<>
+          <section className="welcome-banner"><div className="welcome-copy"><div className="welcome-tag"><span className="live-dot"/> WORKSPACE AKTIF</div><h2>Halo, {user.email?.split("@")[0]||"bro"} <span>👋</span></h2><p>Catat yang sudah dikerjakan, pantau follow-up, lanjutkan dengan fokus.</p><button className="welcome-btn" onClick={()=>showModal("log")}><Plus size={16}/> Catat aktivitas</button></div><div className="welcome-illustration"><div className="orb orb-a"/><div className="orb orb-b"/><div className="desk-card"><div className="desk-screen"><span/><span/><span/><div className="screen-line"/><div className="screen-line short"/></div><div className="desk-stand"/></div><div className="float-check"><CheckCircle2 size={19}/></div></div><div className="banner-noise"/></section>
+          <div className="section-heading"><div><h2>Overview</h2><p>Gambaran pekerjaanmu hari ini.</p></div><button className="text-btn" onClick={()=>setSection("checks")}>Lihat semua task <ArrowDownRight size={15}/></button></div>
+          <div className="stats-grid"><article className="stat-card"><div className="stat-top"><span className="stat-icon lavender"><ClipboardCheck size={18}/></span><span className="stat-trend">{openTasks.length} aktif</span></div><div className="stat-number">{openTasks.length}</div><div className="stat-label">Task perlu follow-up</div><div className="stat-foot"><span>Task yang belum selesai</span><span className="stat-mini">↗</span></div></article><article className="stat-card"><div className="stat-top"><span className="stat-icon green"><CheckCheck size={18}/></span><span className="stat-trend good">Selesai</span></div><div className="stat-number">{doneCount}</div><div className="stat-label">Task dibereskan</div><div className="stat-foot"><span>Total task selesai</span><span className="stat-mini green-text">✓</span></div></article><article className="stat-card"><div className="stat-top"><span className="stat-icon peach"><Clock3 size={18}/></span><span className={`stat-trend ${overdue?"bad":"good"}`}>{overdue?"Perlu dicek":"On track"}</span></div><div className="stat-number">{overdue}</div><div className="stat-label">Lewat deadline</div><div className="stat-foot"><span>Task melewati tanggal</span><span className="stat-mini">!</span></div></article><article className="stat-card"><div className="stat-top"><span className="stat-icon blue"><BookOpen size={18}/></span><span className="stat-trend">Hari ini</span></div><div className="stat-number">{todayLogs.length}</div><div className="stat-label">Aktivitas dicatat</div><div className="stat-foot"><span>Log pekerjaan hari ini</span><span className="stat-mini">↗</span></div></article></div>
+          <div className="overview-grid"><section className="panel"><div className="panel-heading"><div><h3>Task prioritas</h3><p>Yang paling dekat untuk dikerjakan.</p></div><button className="icon-btn" aria-label="Lihat semua task" onClick={()=>setSection("checks")}><ArrowUpRight size={17}/></button></div>{openTasks.length===0?<EmptyState icon={<CheckCircle2 size={22}/>} title="Semua beres" body="Belum ada task terbuka. Tambahkan follow-up dari lead." action="Tambah task" onAction={()=>showModal("task")}/>:<div className="task-list compact">{openTasks.slice(0,4).map(task=><TaskRow key={task.id} task={task} onToggle={()=>updateTask(task)}/>)}</div>}</section><section className="panel"><div className="panel-heading"><div><h3>Aktivitas terbaru</h3><p>Log kerja terakhir yang kamu catat.</p></div><button className="icon-btn" aria-label="Lihat daily task" onClick={()=>setSection("daily")}><ArrowUpRight size={17}/></button></div>{logs.length===0?<EmptyState icon={<FileText size={21}/>} title="Belum ada aktivitas" body="Mulai catat pekerjaan yang kamu lakukan hari ini." action="Tambah aktivitas" onAction={()=>showModal("log")}/>:<div className="activity-list">{logs.slice(0,4).map(log=><ActivityRow key={log.id} log={log}/>)}</div>}</section></div>
+        </>}
+        {section==="daily"&&<><PageIntro eyebrow="CATATAN HARIAN" title="Daily Task" desc="Rekam apa yang sudah kamu kerjakan hari ini." action="Catat aktivitas" onAction={()=>showModal("log")} icon={<Plus size={16}/>}/><div className="daily-summary"><div className="summary-icon"><CalendarDays size={20}/></div><div><strong>{todayLogs.length} aktivitas hari ini</strong><span>{prettyDate()}</span></div><div className="summary-right">Log harianmu</div></div>{logs.length===0?<div className="panel"><EmptyState icon={<FileText size={22}/>} title="Belum ada aktivitas" body="Tambahkan catatan pertama tentang pekerjaan yang selesai." action="Tambah aktivitas" onAction={()=>showModal("log")}/></div>:<div className="log-feed">{logs.map(log=><article className="log-card" key={log.id}><div className="log-timeline"><span/></div><div className="log-content"><div className="log-meta"><span className="date-pill">{prettyDate(new Date(`${log.log_date}T12:00:00`))}</span><span className="time-pill">{new Intl.DateTimeFormat("id-ID",{hour:"2-digit",minute:"2-digit"}).format(new Date(log.created_at))}</span><button className="delete-link" onClick={()=>removeRow("daily_logs",log.id)}>Hapus</button></div><h3>{log.title}</h3>{log.details&&<p>{log.details}</p>}</div></article>)}</div>}</>}
+        {section==="checks"&&<><PageIntro eyebrow="FOLLOW-UP DARI LEAD" title="Daily Check" desc="Pantau project dan task di luar tiket helpdesk." action="Tambah task" onAction={()=>showModal("task")} icon={<Plus size={16}/>}/><div className="task-toolbar"><div className="task-count"><span className="count-dot"/>{openTasks.length} task terbuka</div><div className="filter-legend"><span className="priority-dot high"/>Prioritas tinggi<span className="legend-divider"/><span className="priority-dot normal"/>Normal</div></div>{tasks.length===0?<div className="panel"><EmptyState icon={<ClipboardCheck size={22}/>} title="Checklist masih kosong" body="Masukkan task langsung dari lead, termasuk project dan deadline." action="Tambah task pertama" onAction={()=>showModal("task")}/></div>:<div className="checks-list">{tasks.map(task=><TaskRow key={task.id} task={task} onToggle={()=>updateTask(task)} onDelete={()=>removeRow("followup_tasks",task.id)}/>)}</div>}<div className="soft-note"><ShieldCheck size={17}/><span>Tips: catat task kerja tanpa memasukkan password, token, atau detail akses sistem.</span></div></>}
+        {section==="notes"&&<><PageIntro eyebrow="CATATAN KERJA" title="Notes" desc="Simpan prosedur, konteks project, dan pengingat penting." action="Buat catatan" onAction={()=>showModal("note")} icon={<Plus size={16}/>}/><div className="notes-safety"><div className="notes-safety-icon"><LockKeyhole size={18}/></div><div><strong>Jangan simpan password di sini</strong><p>Pakai password manager untuk kredensial. Notes ini untuk catatan kerja non-rahasia.</p></div></div><div className="notes-toolbar"><div className="search-wrap"><Search size={16}/><input placeholder="Cari catatan..." value={search} onChange={e=>setSearch(e.target.value)}/>{search&&<button onClick={()=>setSearch("")} aria-label="Hapus pencarian"><X size={14}/></button>}</div><div className="notes-total">{filteredNotes.length} catatan</div></div>{filteredNotes.length===0?<div className="panel"><EmptyState icon={<StickyNote size={22}/>} title={search?"Catatan tidak ditemukan":"Belum ada catatan"} body={search?"Coba kata kunci lain.":"Buat catatan pertamamu untuk menyimpan konteks kerja."} action={search?undefined:"Buat catatan"} onAction={search?undefined:()=>showModal("note")}/></div>:<div className="notes-grid">{filteredNotes.map(note=><article className="note-card" key={note.id} onClick={()=>{setEditingNote(note);setModal("note");}}><div className="note-card-top"><span className="note-tag">{note.tag||"Umum"}</span><button className="icon-btn note-delete" aria-label="Hapus catatan" onClick={e=>{e.stopPropagation();removeRow("work_notes",note.id);}}><X size={16}/></button></div><h3>{note.title}</h3><p>{note.body||"Belum ada isi."}</p><div className="note-foot"><span><Clock3 size={13}/>{shortDate(note.updated_at?.slice(0,10))}</span><span className="note-edit">Buka catatan <ArrowUpRight size={13}/></span></div></article>)}</div>}</>}
+      </div>
+    </main>
+    {modal==="log"&&<Modal title="Catat aktivitas" onClose={()=>setModal(null)}><form className="modal-form" onSubmit={saveLog}><label>Tanggal<input name="log_date" type="date" defaultValue={today} required/></label><label>Aktivitas<input name="title" maxLength={160} placeholder="Contoh: Cek koneksi printer lantai 2" required/></label><label>Detail singkat<textarea name="details" rows={4} maxLength={5000} placeholder="Apa yang dikerjakan? Ada hasil atau kendala?"/></label><div className="modal-actions"><button type="button" className="secondary-btn" onClick={()=>setModal(null)}>Batal</button><button className="primary-btn">Simpan aktivitas <ArrowUpRight size={16}/></button></div></form></Modal>}
+    {modal==="task"&&<Modal title="Tambah Daily Check" onClose={()=>setModal(null)}><form className="modal-form" onSubmit={saveTask}><label>Nama task<input name="title" maxLength={160} placeholder="Contoh: Ganti telepon ruang meeting" required/></label><div className="form-row"><label>Project / area<input name="project" maxLength={120} placeholder="Contoh: CCTV ruang server"/></label><label>Deadline<input name="deadline" type="date" min={today}/></label></div><div className="form-row"><label>Prioritas<select name="priority" defaultValue="normal"><option value="low">Rendah</option><option value="normal">Normal</option><option value="high">Tinggi</option></select></label><div className="field-spacer"/></div><label>Catatan<textarea name="details" rows={3} maxLength={5000} placeholder="Konteks dari lead atau langkah berikutnya"/></label><div className="modal-actions"><button type="button" className="secondary-btn" onClick={()=>setModal(null)}>Batal</button><button className="primary-btn">Simpan task <ArrowUpRight size={16}/></button></div></form></Modal>}
+    {modal==="note"&&<Modal title={editingNote?"Edit catatan":"Buat catatan"} onClose={()=>{setModal(null);setEditingNote(null);}}><form className="modal-form" onSubmit={saveNote}><label>Judul<input name="title" defaultValue={editingNote?.title||""} maxLength={160} placeholder="Contoh: Checklist setup laptop baru" required/></label><label>Kategori<input name="tag" defaultValue={editingNote?.tag||"Umum"} maxLength={40} placeholder="Contoh: Prosedur, Project, Aset"/></label><label>Isi catatan<textarea name="body" defaultValue={editingNote?.body||""} rows={7} maxLength={10000} placeholder="Tulis catatan kerja yang tidak berisi password atau secret..."/></label><div className="modal-actions"><button type="button" className="secondary-btn" onClick={()=>{setModal(null);setEditingNote(null);}}>Batal</button><button className="primary-btn">Simpan catatan <ArrowUpRight size={16}/></button></div></form></Modal>}
+    {toast&&<div className="toast"><CheckCircle2 size={17}/>{toast}</div>}
+  </div>;
+}
+
+function PageIntro({eyebrow,title,desc,action,onAction,icon}:{eyebrow:string;title:string;desc:string;action:string;onAction:()=>void;icon:React.ReactNode}){return <div className="page-intro"><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><p>{desc}</p></div><button className="primary-btn" onClick={onAction}>{icon}{action}</button></div>;}
+function EmptyState({icon,title,body,action,onAction}:{icon:React.ReactNode;title:string;body:string;action?:string;onAction?:()=>void}){return <div className="empty-state"><div className="empty-icon">{icon}</div><h3>{title}</h3><p>{body}</p>{action&&onAction&&<button className="text-btn" onClick={onAction}>{action}<ArrowUpRight size={15}/></button>}</div>;}
+function TaskRow({task,onToggle,onDelete}:{task:FollowupTask;onToggle:()=>void;onDelete?:()=>void}){
+  const overdue=task.deadline&&task.deadline<localDateString()&&task.status!=="done";
+  return <article className={`task-row ${task.status==="done"?"task-done":""}`}><button className={`task-check ${task.status==="done"?"checked":""}`} aria-label={task.status==="done"?"Tandai belum selesai":"Tandai berikutnya"} onClick={onToggle}>{task.status==="done"?<Check size={14}/>:task.status==="in_progress"?<span/>:null}</button><div className="task-main"><div className="task-title-line"><h4>{task.title}</h4>{task.priority==="high"&&<span className="priority-label">PENTING</span>}</div><div className="task-subline">{task.project&&<span className="project-chip"><Flag size={12}/>{task.project}</span>}{task.details&&<span className="task-details">{task.details}</span>}</div></div><div className={`task-deadline ${overdue?"overdue":""}`}><CalendarDays size={14}/><span>{task.deadline?shortDate(task.deadline):"Tanpa deadline"}</span></div><span className={`status-pill ${task.status}`}>{task.status==="todo"?"Belum mulai":task.status==="in_progress"?"Dikerjakan":"Selesai"}</span>{onDelete&&<button className="icon-btn task-delete" aria-label="Hapus task" onClick={onDelete}><X size={16}/></button>}</article>
+}
+function ActivityRow({log}:{log:DailyLog}){return <article className="activity-row"><div className="activity-icon"><CheckCircle2 size={16}/></div><div className="activity-main"><strong>{log.title}</strong><p>{log.details||"Aktivitas kerja dicatat."}</p></div><span className="activity-date">{shortDate(log.log_date)}</span></article>;}
