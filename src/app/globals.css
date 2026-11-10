@@ -158,6 +158,14 @@ button:disabled { cursor: wait; opacity: .65; }
 .daily-summary span { margin-top: 3px; color: #9297a4; font-size: 10px; }
 .summary-right { margin-left: auto; color: #9b9fb0; font-size: 10px; }
 .log-feed { padding-left: 11px; }
+.log-days { display: grid; gap: 14px; }
+.log-day { overflow: hidden; border: 1px solid #e9eaf0; border-radius: 13px; background: #fff; box-shadow: 0 3px 12px #252b3a05; padding: 13px 15px 2px; }
+.log-day-head { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f0f1f4; padding: 1px 0 11px; }
+.day-mark { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border-radius: 9px; background: #f0f1ff; color: #6571d8; }
+.log-day-head h3 { margin: 0; color: #333949; font-size: 11px; font-weight: 750; }
+.log-day-head span { display: block; margin-top: 3px; color: #999eaa; font-size: 9px; }
+.log-day-head .today-label { margin: 0 0 0 auto; border-radius: 20px; background: #edf8f2; color: #529b73; padding: 5px 9px; font-size: 9px; font-weight: 700; }
+.log-day .log-feed { padding: 11px 0 0; }
 .log-card { display: flex; min-height: 120px; gap: 15px; }
 .log-timeline { position: relative; display: flex; width: 15px; flex: none; justify-content: center; }
 .log-timeline::after { position: absolute; top: 12px; bottom: -4px; width: 1px; background: #e5e7f1; content: ""; }
@@ -175,6 +183,12 @@ button:disabled { cursor: wait; opacity: .65; }
 .task-count { display: flex; align-items: center; gap: 7px; color: #686e7b; font-size: 10px; font-weight: 750; }
 .count-dot { width: 7px; height: 7px; border-radius: 50%; background: #6a75dc; }
 .filter-legend { display: flex; align-items: center; gap: 6px; color: #979ba6; font-size: 9px; }
+.task-filters { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 12px; }
+.filter-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #e9eaf0; border-radius: 8px; background: #fff; color: #777d8b; padding: 7px 10px; font-size: 9px; font-weight: 700; transition: .15s; }
+.filter-chip:hover { border-color: #cfd3f6; color: #5866ce; }
+.filter-chip > span { min-width: 18px; border-radius: 20px; background: #f1f2f6; color: #838896; padding: 3px 5px; text-align: center; font-size: 8px; }
+.filter-chip.active { border-color: #d9ddff; background: #f0f1ff; color: #5262d4; }
+.filter-chip.active > span { background: #e2e5ff; color: #5262d4; }
 .priority-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
 .priority-dot.high { background: #e08b68; }
 .priority-dot.normal { background: #a9aec5; }
@@ -306,6 +320,8 @@ button:disabled { cursor: wait; opacity: .65; }
   .page-intro p { max-width: 235px; font-size: 10px; line-height: 1.5; }
   .page-intro .primary-btn { padding: 9px 10px; font-size: 9px; white-space: nowrap; }
   .task-row { flex-wrap: wrap; gap: 8px; padding: 11px 10px; }
+  .task-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .filter-chip { flex: none; white-space: nowrap; }
   .task-main { min-width: calc(100% - 33px); }
   .task-deadline { margin-left: 28px; }
   .status-pill { margin-left: auto; }
