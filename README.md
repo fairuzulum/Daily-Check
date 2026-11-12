@@ -13,7 +13,7 @@ A private, single-user workspace for daily work logs, lead-assigned follow-up ta
 1. Install Node.js 20.9 or newer.
 2. Run `npm install`.
 3. Copy `.env.example` to `.env.local` and add the Supabase project URL and publishable key.
-4. In the Supabase SQL Editor, run `supabase/migrations/202611090001_daily_check.sql` and then `supabase/migrations/202611120001_add_activity_metadata.sql`.
+4. In the Supabase SQL Editor, run the migrations in order: `202611090001_daily_check.sql`, `202611120001_add_activity_metadata.sql`, then `202611120002_fix_existing_log_time_zone.sql`.
 5. In Supabase Authentication, create your user. Disable public sign-ups for a private personal app and enable MFA.
 6. Run `npm run dev` and open `http://localhost:3000`.
 
@@ -33,4 +33,4 @@ The app does not implement a password vault. Do not enter email passwords, syste
 4. Set the Supabase Auth site URL and allowed redirect URLs to the deployed Vercel domain.
 5. Deploy, then sign in with the user created in Supabase.
 
-Both database migrations are included in this repository. Apply them to the Supabase project before using the app.
+All database migrations are included in this repository. Apply them to the Supabase project before using the app.
