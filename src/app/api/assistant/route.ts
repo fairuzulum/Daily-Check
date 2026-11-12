@@ -124,7 +124,7 @@ export async function POST(request: Request) {
   };
 
   try {
-    const geminiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+    const geminiResponse = await fetch("https://generativelanguage.googleapis.com/v1/interactions", {
       method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       signal: AbortSignal.timeout(25_000),
       body: JSON.stringify({
