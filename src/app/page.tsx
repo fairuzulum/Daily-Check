@@ -170,7 +170,7 @@ export default function Home() {
     try {
       const {data:{session}}=await supabase.auth.getSession();
       if(!session?.access_token)throw new Error("Sesi login habis. Keluar lalu masuk lagi.");
-      const response=await fetch("/api/assistant",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({question})});
+      const response=await fetch("/api/assistant",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({question,history:assistantMessages.slice(-4).map(({question,answer})=>({question,answer}))})});
       const result=await response.json();
       if(!response.ok)throw new Error(result.error||"AI belum bisa menjawab. Coba lagi.");
       setAssistantMessages(current=>[...current,{question,answer:result.answer,sources:result.sources||[]}]);
