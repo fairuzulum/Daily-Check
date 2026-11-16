@@ -6,3 +6,6 @@ build/
 .env*
 !.env.example
 *.tsbuildinfo
+
+# Local verification artifacts
+.work/
