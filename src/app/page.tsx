@@ -2,26 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, ArrowDownRight, ArrowUpRight, BookOpen, Bot, CalendarDays, Check, CheckCheck,
+  Activity, ArrowDownRight, ArrowUpRight, BookOpen, CalendarDays, Check, CheckCheck,
   CheckCircle2, CircleHelp, ClipboardCheck, Clock3, FileText, Flag,
-  Laptop, LockKeyhole, LogOut, Menu, Plus, Search, Send, ShieldCheck, Sparkles, StickyNote, X,
+  Laptop, LockKeyhole, LogOut, Menu, Plus, Search, ShieldCheck, StickyNote, X,
 } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { localDateString, prettyDate, shortDate } from "@/lib/dates";
 
-type Section = "overview" | "daily" | "checks" | "assistant" | "notes";
+type Section = "overview" | "daily" | "checks" | "notes";
 type TaskFilter = "all" | "open" | "high" | "done";
 type TicketFilter = "all" | "with_ticket" | "without_ticket";
 type DailyLog = { id: string; log_date: string; activity_time: string; performer_name: string; department: string; location: string; ticket_number: string | null; title: string; details: string; created_at: string };
 type FollowupTask = { id: string; title: string; details: string; project: string; deadline: string | null; priority: "low" | "normal" | "high"; status: "todo" | "in_progress" | "done"; created_at: string };
 type WorkNote = { id: string; title: string; body: string; tag: string; updated_at: string };
-type AssistantMessage = { question: string; answer: string; sources: { id: string; kind: "activity" | "task"; label: string }[] };
 
 const nav = [
   { id: "overview" as const, label: "Ringkasan", icon: Activity },
   { id: "daily" as const, label: "Daily Task", icon: FileText },
   { id: "checks" as const, label: "Daily Check", icon: ClipboardCheck },
-  { id: "assistant" as const, label: "AI Assistant", icon: Bot },
   { id: "notes" as const, label: "Notes", icon: StickyNote },
 ];
 
@@ -67,10 +65,6 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [logFilters, setLogFilters] = useState({ performer: "", department: "", location: "", ticket: "all" as TicketFilter });
-  const [assistantInput, setAssistantInput] = useState("");
-  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
-  const [assistantBusy, setAssistantBusy] = useState(false);
-  const [assistantError, setAssistantError] = useState("");
   const [toast, setToast] = useState("");
   const [loadError, setLoadError] = useState("");
   const today = localDateString();
@@ -162,23 +156,6 @@ export default function Home() {
     const result=editingNote?await supabase.from("work_notes").update(payload).eq("id",editingNote.id):await supabase.from("work_notes").insert({...payload,user_id:user.id});
     if(result.error){notify("Catatan belum tersimpan.");return;}setModal(null);setEditingNote(null);notify(editingNote?"Catatan diperbarui.":"Catatan disimpan.");loadData();
   }
-  async function askAssistant(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const question=assistantInput.trim();
-    if(!supabase||!user||!question||assistantBusy)return;
-    setAssistantBusy(true);setAssistantError("");setAssistantInput("");
-    try {
-      const {data:{session}}=await supabase.auth.getSession();
-      if(!session?.access_token)throw new Error("Sesi login habis. Keluar lalu masuk lagi.");
-      const response=await fetch("/api/assistant",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({question,history:assistantMessages.slice(-4).map(({question,answer})=>({question,answer}))})});
-      const result=await response.json();
-      if(!response.ok)throw new Error(result.error||"AI belum bisa menjawab. Coba lagi.");
-      setAssistantMessages(current=>[...current,{question,answer:result.answer,sources:result.sources||[]}]);
-    } catch(error) {
-      setAssistantInput(question);
-      setAssistantError(error instanceof Error?error.message:"Koneksi ke AI gagal. Coba lagi.");
-    } finally { setAssistantBusy(false); }
-  }
 
   if (!authReady) return <div className="loading-screen"><div className="brand-mark"><Laptop size={20}/></div><span>Menyiapkan workspace...</span></div>;
   if (!user) return <Login onLogin={()=>{if(supabase)supabase.auth.getUser().then(({data})=>setUser(data.user?{id:data.user.id,email:data.user.email}:null));}}/>;
@@ -198,7 +175,6 @@ export default function Home() {
         </>}
         {section==="daily"&&<><PageIntro eyebrow="CATATAN HARIAN" title="Daily Task" desc="Rekam aktivitas kerja lengkap dengan petugas, lokasi, waktu, dan tiket." action="Catat aktivitas" onAction={()=>showModal("log")} icon={<Plus size={16}/>}/><div className="daily-summary"><div className="summary-icon"><CalendarDays size={20}/></div><div><strong>{todayLogs.length} aktivitas hari ini</strong><span>{prettyDate()}</span></div><div className="summary-right">{filteredLogs.length} ditampilkan</div></div>{logs.length===0?<div className="panel"><EmptyState icon={<FileText size={22}/>} title="Belum ada aktivitas" body="Tambahkan catatan pertama tentang pekerjaan yang selesai." action="Tambah aktivitas" onAction={()=>showModal("log")}/></div>:<><div className="log-filters"><label>Petugas<select value={logFilters.performer} onChange={e=>setLogFilters(v=>({...v,performer:e.target.value}))}><option value="">Semua petugas</option>{logFilterOptions.performers.map(value=><option key={value}>{value}</option>)}</select></label><label>Departemen<select value={logFilters.department} onChange={e=>setLogFilters(v=>({...v,department:e.target.value}))}><option value="">Semua departemen</option>{logFilterOptions.departments.map(value=><option key={value}>{value}</option>)}</select></label><label>Lokasi<select value={logFilters.location} onChange={e=>setLogFilters(v=>({...v,location:e.target.value}))}><option value="">Semua lokasi</option>{logFilterOptions.locations.map(value=><option key={value}>{value}</option>)}</select></label><label>Status tiket<select value={logFilters.ticket} onChange={e=>setLogFilters(v=>({...v,ticket:e.target.value as TicketFilter}))}><option value="all">Semua tiket</option><option value="with_ticket">Ada nomor tiket</option><option value="without_ticket">Tidak ada tiket</option></select></label><button className="clear-filters" onClick={()=>setLogFilters({performer:"",department:"",location:"",ticket:"all"})}>Reset filter</button></div>{filteredLogs.length===0?<div className="panel"><EmptyState icon={<Search size={22}/>} title="Aktivitas tidak ditemukan" body="Ubah atau reset filter untuk melihat catatan lainnya." action="Reset filter" onAction={()=>setLogFilters({performer:"",department:"",location:"",ticket:"all"})}/></div>:<div className="log-days">{groupedLogs.map(([date, dayLogs])=><section className="log-day" key={date}><header className="log-day-head"><div className="day-mark"><CalendarDays size={16}/></div><div><h3>{prettyDate(new Date(`${date}T12:00:00`))}</h3><span>{dayLogs.length} aktivitas</span></div>{date===today&&<span className="today-label">Hari ini</span>}</header><div className="log-feed">{dayLogs.map(log=><article className="log-card" key={log.id}><div className="log-timeline"><span/></div><div className="log-content"><div className="log-meta"><span className="time-pill"><Clock3 size={12}/>{log.activity_time?.slice(0,5)||"--:--"}</span><button className="delete-link" onClick={()=>removeRow("daily_logs",log.id)}>Hapus</button></div><h3>{log.title}</h3><div className="log-attributes"><span><strong>Petugas</strong>{log.performer_name||"Belum diisi"}</span><span><strong>Departemen</strong>{log.department||"Belum diisi"}</span><span><strong>Lokasi</strong>{log.location||"Belum diisi"}</span><span><strong>Tiket</strong>{log.ticket_number?`#${log.ticket_number}`:<em className="no-ticket">Tidak ada tiket</em>}</span></div>{log.details&&<p>{log.details}</p>}</div></article>)}</div></section>)}</div>}</>}</>}
         {section==="checks"&&<><PageIntro eyebrow="FOLLOW-UP DARI LEAD" title="Daily Check" desc="Pantau project dan task di luar tiket helpdesk." action="Tambah task" onAction={()=>showModal("task")} icon={<Plus size={16}/>}/><div className="task-toolbar"><div className="task-count"><span className="count-dot"/>{openTasks.length} task belum selesai</div><div className="filter-legend"><span className="priority-dot high"/>Prioritas tinggi<span className="legend-divider"/><span className="priority-dot normal"/>Normal</div></div>{tasks.length===0?<div className="panel"><EmptyState icon={<ClipboardCheck size={22}/>} title="Checklist masih kosong" body="Masukkan task langsung dari lead, termasuk project dan deadline." action="Tambah task pertama" onAction={()=>showModal("task")}/></div>:<><div className="task-filters" role="group" aria-label="Filter task">{([["all","Semua"],["open","Belum selesai"],["high","Prioritas tinggi"],["done","Selesai"]] as [TaskFilter,string][]).map(([key,label])=><button type="button" key={key} className={`filter-chip ${taskFilter===key?"active":""}`} onClick={()=>setTaskFilter(key)} aria-pressed={taskFilter===key}>{label}<span>{taskFilterCounts[key]}</span></button>)}</div>{filteredTasks.length===0?<div className="panel"><EmptyState icon={<ClipboardCheck size={22}/>} title="Tidak ada task di filter ini" body="Coba pilih filter lain untuk melihat task." action="Lihat semua task" onAction={()=>setTaskFilter("all")}/></div>:<div className="checks-list">{filteredTasks.map(task=><TaskRow key={task.id} task={task} onToggle={()=>updateTask(task)} onDelete={()=>removeRow("followup_tasks",task.id)}/>)}</div>}</>}<div className="soft-note"><ShieldCheck size={17}/><span>Tips: catat task kerja tanpa memasukkan password, token, atau detail akses sistem.</span></div></>}
-        {section==="assistant"&&<><PageIntro eyebrow="ASISTEN BERDASARKAN DATA" title="AI Assistant" desc="Tanya soal aktivitas harian dan Daily Check yang tersimpan di database." action="Daily Task" onAction={()=>setSection("daily")} icon={<FileText size={16}/>}/><div className="assistant-notice"><div className="assistant-icon"><Sparkles size={18}/></div><div><strong>Jawaban dibatasi ke data kerja akunmu</strong><p>AI hanya membaca Daily Task dan Daily Check milik akun yang sedang login. Notes dan credential tidak dikirim.</p></div></div><section className="assistant-panel"><div className="assistant-heading"><div className="assistant-avatar"><Bot size={19}/></div><div><strong>Asisten Daily Check</strong><span>Gemini · sumber dari database</span></div><span className="assistant-lock"><LockKeyhole size={13}/> Privat</span></div><div className="assistant-chat">{assistantMessages.length===0&&!assistantBusy&&<div className="assistant-welcome"><div className="assistant-welcome-icon"><Sparkles size={20}/></div><h3>Mau cari aktivitas apa?</h3><p>Contoh: “Tanggal 12 November jam berapa aku cek CCTV?” atau “Rangkum task prioritas yang belum selesai.”</p></div>}{assistantMessages.map((message,index)=><div className="chat-turn" key={`${index}-${message.question}`}><div className="chat-question">{message.question}</div><div className="chat-answer"><div className="assistant-avatar small"><Bot size={15}/></div><div><p>{message.answer}</p>{message.sources.length>0&&<div className="chat-sources"><strong>Sumber data</strong>{message.sources.map(source=><span key={source.id}>{source.kind==="activity"?"Aktivitas":"Task"} · {source.label}</span>)}</div>}</div></div></div>)}{assistantBusy&&<div className="chat-answer"><div className="assistant-avatar small"><Bot size={15}/></div><p className="thinking-text"><span/>Sedang mencari catatan yang cocok…</p></div>}</div>{assistantError&&<div className="assistant-error"><CircleHelp size={15}/>{assistantError}</div>}<form className="assistant-form" onSubmit={askAssistant}><input aria-label="Tulis pertanyaan" value={assistantInput} onChange={e=>setAssistantInput(e.target.value)} maxLength={500} placeholder="Tanya tentang aktivitas, tanggal, tiket, atau task…" disabled={assistantBusy}/><button type="submit" className="primary-btn" disabled={assistantBusy||!assistantInput.trim()}>{assistantBusy?"Mencari…":"Tanya AI"}<Send size={15}/></button></form><div className="assistant-footnote">Maksimal 500 karakter per pertanyaan. AI menolak pertanyaan di luar data kerja.</div></section></>}
         {section==="notes"&&<><PageIntro eyebrow="CATATAN KERJA" title="Notes" desc="Simpan prosedur, konteks project, dan pengingat penting." action="Buat catatan" onAction={()=>showModal("note")} icon={<Plus size={16}/>}/><div className="notes-safety"><div className="notes-safety-icon"><LockKeyhole size={18}/></div><div><strong>Jangan simpan password di sini</strong><p>Pakai password manager untuk kredensial. Notes ini untuk catatan kerja non-rahasia.</p></div></div><div className="notes-toolbar"><div className="search-wrap"><Search size={16}/><input placeholder="Cari catatan..." value={search} onChange={e=>setSearch(e.target.value)}/>{search&&<button onClick={()=>setSearch("")} aria-label="Hapus pencarian"><X size={14}/></button>}</div><div className="notes-total">{filteredNotes.length} catatan</div></div>{filteredNotes.length===0?<div className="panel"><EmptyState icon={<StickyNote size={22}/>} title={search?"Catatan tidak ditemukan":"Belum ada catatan"} body={search?"Coba kata kunci lain.":"Buat catatan pertamamu untuk menyimpan konteks kerja."} action={search?undefined:"Buat catatan"} onAction={search?undefined:()=>showModal("note")}/></div>:<div className="notes-grid">{filteredNotes.map(note=><article className="note-card" key={note.id} onClick={()=>{setEditingNote(note);setModal("note");}}><div className="note-card-top"><span className="note-tag">{note.tag||"Umum"}</span><button className="icon-btn note-delete" aria-label="Hapus catatan" onClick={e=>{e.stopPropagation();removeRow("work_notes",note.id);}}><X size={16}/></button></div><h3>{note.title}</h3><p>{note.body||"Belum ada isi."}</p><div className="note-foot"><span><Clock3 size={13}/>{shortDate(note.updated_at?.slice(0,10))}</span><span className="note-edit">Buka catatan <ArrowUpRight size={13}/></span></div></article>)}</div>}</>}
       </div>
     </main>

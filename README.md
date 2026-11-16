@@ -21,7 +21,7 @@ A private, single-user workspace for daily work logs, lead-assigned follow-up ta
 
 Use the **publishable key** in `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The database migration grants authenticated users CRUD access to the app tables, while RLS restricts every row to its `user_id`. Never put a Supabase secret/service-role key in a `NEXT_PUBLIC_` variable, the browser, or GitHub.
 
-Daily Task entries can include the worker name, department, location, time, and an optional ticket number. The AI assistant reads only the signed-in user's Daily Task and Daily Check records; Notes are excluded. Relevant work records are sent to Google's Gemini API for answering, so follow your employer's policy before entering internal work information.
+Daily Task entries can include the worker name, department, location, time, and an optional ticket number.
 
 The app does not implement a password vault. Do not enter email passwords, system credentials, API tokens, recovery codes, or other secrets in Notes. Use a dedicated password manager. Follow your employer's policy before storing internal work information in a personal cloud project.
 
@@ -29,7 +29,7 @@ The app does not implement a password vault. Do not enter email passwords, syste
 
 1. Push this project to a **private** GitHub repository.
 2. Import the repository into Vercel.
-3. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and a newly generated `GEMINI_API_KEY` to Vercel's Production and Preview environments. Keep `GEMINI_API_KEY` server-only; never use a `NEXT_PUBLIC_` prefix or commit a real key.
+3. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to Vercel's Production and Preview environments.
 4. Set the Supabase Auth site URL and allowed redirect URLs to the deployed Vercel domain.
 5. Deploy, then sign in with the user created in Supabase.
 
