@@ -1,0 +1,20 @@
+services:
+  daily-check:
+    image: daily-check:${IMAGE_TAG:?Set IMAGE_TAG in .env}
+    container_name: daily-check
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - npm_proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+networks:
+  npm_proxy:
+    external: true

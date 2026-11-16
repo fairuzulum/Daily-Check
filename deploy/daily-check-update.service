@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy latest successful Daily Check production release
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+RequiresMountsFor=/mnt/storage/containers/daily-check
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /mnt/storage/containers/daily-check/update.sh
+TimeoutStartSec=15min

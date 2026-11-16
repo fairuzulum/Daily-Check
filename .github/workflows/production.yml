@@ -1,0 +1,48 @@
+name: Production ARM64
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: production-arm64
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - name: Build native ARM64 image
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          docker build --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY -t daily-check:$GITHUB_SHA .
+          docker run -d --name smoke -p 127.0.0.1:3000:3000 daily-check:$GITHUB_SHA
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:3000 >/dev/null
+          docker logs smoke
+          docker stop smoke
+          docker save daily-check:$GITHUB_SHA | gzip > daily-check.tar.gz
+          sha256sum daily-check.tar.gz > SHA256SUMS
+      - name: Publish deployment image after successful checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="deploy-$GITHUB_SHA"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release already exists; immutable deployment retained."
+            exit 0
+          fi
+          gh release create "$tag" daily-check.tar.gz SHA256SUMS --target "$GITHUB_SHA" --title "Production $GITHUB_SHA" --notes "ARM64 Docker image. CI lint, build and HTTP smoke check passed." --latest
