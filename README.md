@@ -13,7 +13,7 @@ A private, single-user workspace for daily work logs, lead-assigned follow-up ta
 1. Install Node.js 20.9 or newer.
 2. Run `npm install`.
 3. Copy `.env.example` to `.env.local` and add the Supabase project URL and publishable key.
-4. In the Supabase SQL Editor, run the migrations in order: `202611090001_daily_check.sql`, `202611120001_add_activity_metadata.sql`, `202611120002_fix_existing_log_time_zone.sql`, `20261116071339_reusable_locations_and_workspace_filters.sql`, then `20261116072308_restrict_daily_check_anonymous_access.sql`.
+4. In the Supabase SQL Editor, run the migrations in order: `202611090001_daily_check.sql`, `202611120001_add_activity_metadata.sql`, `202611120002_fix_existing_log_time_zone.sql`, `20261116071339_reusable_locations_and_workspace_filters.sql`, `20261116072308_restrict_daily_check_anonymous_access.sql`, then `20261116074541_fixed_department_catalog.sql`.
 5. In Supabase Authentication, create your user. Disable public sign-ups for a private personal app and enable MFA.
 6. Run `npm run dev` and open `http://localhost:3000`.
 
@@ -38,3 +38,9 @@ The summary RPC uses SECURITY INVOKER and account ownership checks; new location
 5. Deploy, then sign in with the user created in Supabase.
 
 All database migrations are included in this repository. Apply them to the Supabase project before using the app.
+
+## Approved departments
+
+The database holds the 40 approved department names and initials in `daily_check_departments`. Signed-in users can read this catalog but cannot add, rename, or delete departments. Form and filter dropdowns show the same complete catalog. A database trigger rejects inserts or department updates outside this list, including requests from older clients. Initials are not unique; the full name identifies a department.
+
+Existing exact-name matches and unambiguous initials are normalized. Unresolved historical values remain on their original logs and are excluded from the dropdown; editing those activities requires selecting an approved department.
